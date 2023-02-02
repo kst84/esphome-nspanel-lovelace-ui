@@ -192,7 +192,7 @@ void NSPanelLovelace::upload_tft(const std::string &url) {
   // Tells the Nextion the content length of the tft file and baud rate it will be sent at
   // Once the Nextion accepts the command it will wait until the file is successfully uploaded
   // If it fails for any reason a power cycle of the display will be needed
-  sprintf(command, "whmi-wris %d,%d,1", this->content_length_, this->update_baud_rate_);
+  sprintf(command, "whmi-wris %d,%d,1", this->content_length_, this->parent_->get_baud_rate());
 
   // Clear serial receive buffer
   uint8_t d;
@@ -201,13 +201,6 @@ void NSPanelLovelace::upload_tft(const std::string &url) {
   };
 
   this->send_nextion_command(command);
-
-  // Since 115200 is default and the communication wouldn't work even if it was overridden
-  // in the uart component initialization, it should be safe to ignore setting the baud rate
-  // if it's set to 115200. It helps to avoid additional unnecessary HardwareSerial re-init.
-  if (this->update_baud_rate_ != 115200) {
-    this->set_baud_rate_(this->update_baud_rate_);
-  }
 
   std::string response;
   ESP_LOGD(TAG, "Waiting for upgrade response");
@@ -226,11 +219,16 @@ void NSPanelLovelace::upload_tft(const std::string &url) {
 
   // Nextion wants 4096 bytes at a time. Make chunk_size a multiple of 4096
   uint32_t chunk_size = 8192;
-  if (ESP.getFreeHeap() > 40960) {  // 32K to keep on hand
-    chunk_size = ESP.getFreeHeap() - 32768;
-    chunk_size = chunk_size > 65536 ? 65536 : chunk_size;
-  } else if (ESP.getFreeHeap() < 10240) {
-    chunk_size = 4096;
+  if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0) {
+    chunk_size = this->content_length_;
+  } else {
+    if (ESP.getFreeHeap() > 40960) {  // 32K to keep on hand
+      int chunk = int((ESP.getFreeHeap() - 32768) / 4096);
+      chunk_size = chunk * 4096;
+      chunk_size = chunk_size > 65536 ? 65536 : chunk_size;
+    } else if (ESP.getFreeHeap() < 10240) {
+      chunk_size = 4096;
+    }
   }
 
 

@@ -1,4 +1,3 @@
-#include <regex>
 #include "nspanel_lovelace.h"
 
 #include "esphome/core/application.h"
@@ -16,28 +15,6 @@ void NSPanelLovelace::setup() {
     // workaround for https://github.com/sairon/esphome-nspanel-lovelace-ui/issues/8
     if (this->use_missed_updates_workaround_) delay(75);
   });
-
-  if (this->berry_driver_version_ > 0) {
-    this->mqtt_->subscribe(std::regex_replace(this->send_topic_, std::regex("CustomSend"), "GetDriverVersion"),
-                           [this](const std::string &topic, const std::string &payload) {
-                             this->mqtt_->publish_json(this->recv_topic_, [this](ArduinoJson::JsonObject root) {
-                               root["nlui_driver_version"] = this->berry_driver_version_;
-                             });
-                           });
-
-    this->mqtt_->subscribe(std::regex_replace(this->send_topic_, std::regex("CustomSend"), "FlashNextion"),
-                           [this](const std::string &topic, const std::string &payload) {
-                             ESP_LOGD(TAG, "FlashNextion called with URL '%s'", payload.c_str());
-
-                             // Calling upload_tft in MQTT callback directly would crash ESPHome - using a scheduler
-                             // task avoids that. Maybe there is another way?
-                             App.scheduler.set_timeout(
-                                 this, "nspanel_lovelace_flashnextion_upload", 100, [this, payload]() {
-                                   ESP_LOGD(TAG, "Starting FlashNextion with URL '%s'", payload.c_str());
-                                   this->upload_tft(payload);
-                                 });
-                           });
-  }
 }
 
 void NSPanelLovelace::loop() {
@@ -215,13 +192,6 @@ void NSPanelLovelace::start_reparse_mode() {
 void NSPanelLovelace::exit_reparse_mode() {
   this->send_nextion_command("recmod=1");
   reparse_mode_ = false;
-}
-
-void NSPanelLovelace::set_baud_rate_(int baud_rate) {
-  // hopefully on NSPanel it should always be an ESP32ArduinoUARTComponent instance
-  auto *uart = reinterpret_cast<uart::ESP32ArduinoUARTComponent *>(this->parent_);
-  uart->set_baud_rate(baud_rate);
-  uart->setup();
 }
 
 }  // namespace nspanel_lovelace
